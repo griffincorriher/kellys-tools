@@ -1,6 +1,9 @@
 import streamlit as st
+from pypdf import PdfReader, PdfWriter
+from pdf2image import convert_from_bytes
+import io
+uploaded = st.file_uploader("Upload a report", type="pdf")
 
-st.title("🎈 My new app")
-st.write(
-    "Let's start building! For help and inspiration, head over to [docs.streamlit.io](https://docs.streamlit.io/)."
-)
+if uploaded:
+    reader = PdfReader(uploaded)
+    pages = convert_from_bytes(uploaded.getvalue(), dpi=100)
