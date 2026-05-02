@@ -33,30 +33,48 @@ def split_and_merge(pdf_bytes, num_titles, pages_per_student, break_pages_check)
     reader = PdfReader(io.BytesIO(pdf_bytes))
     all_pages = list(reader.pages)
     remaining = all_pages[num_titles:]
-    
+
+    # Guard 1: No pages left after removing title pages
+    if len(remaining) == 0:
+        raise ValueError(
+            f"No pages remain after removing {num_titles} title page(s). "
+            f"The PDF only has {len(all_pages)} page(s)."
+        )
+
+    # Guard 2: Not enough pages for even one student
+    if len(remaining) < pages_per_student:
+        raise ValueError(
+            f"Only {len(remaining)} page(s) remain after title pages, "
+            f"but {pages_per_student} pages per student is required."
+        )
+
     students = []
     i = 0
     while i < len(remaining):
         chunk = remaining[i:i + pages_per_student]
+
+        # Guard 3: Skip incomplete trailing chunks
+        if len(chunk) < pages_per_student:
+            break
+
         i += pages_per_student
         if break_pages_check:
             i += 1
-            
-        if chunk:
-            writer = PdfWriter()
-            for page in chunk:
-                writer.add_page(page)
-            buf = io.BytesIO()
-            writer.write(buf)
-            chunk_bytes = buf.getvalue()
-            
-            # Identify the student
-            raw_name = get_student_name(chunk_bytes)
-            
-            students.append({
-                "name": raw_name,
-                "bytes": chunk_bytes
-            })
+
+        writer = PdfWriter()
+        for page in chunk:
+            writer.add_page(page)
+        buf = io.BytesIO()
+        writer.write(buf)
+        chunk_bytes = buf.getvalue()
+
+        raw_name = get_student_name(chunk_bytes)
+
+        students.append({
+            "name": raw_name,
+            "bytes": chunk_bytes
+        })
+
     return students
 
 # --- ZIP LOGIC ---
@@ -100,11 +118,17 @@ if not st.session_state.pdf_accepted:
     if accept.button("Continue", type="primary", icon=":material/check_small:", disabled=(uploaded is None)):
         pdf_bytes = uploaded.read()
         bar = st.progress(0, text="Splitting PDF...")
-        st.session_state.students = split_and_merge(pdf_bytes, num_titles, pages_per_student, break_pages)
-        st.session_state.pdf_accepted = True
-        st.session_state.accepted_filename = uploaded.name
-        bar.progress(100, text="Done!")
-        st.rerun()
+        try:
+            st.session_state.students = split_and_merge(
+                pdf_bytes, num_titles, pages_per_student, break_pages
+            )
+            st.session_state.pdf_accepted = True
+            st.session_state.accepted_filename = uploaded.name
+            bar.progress(100, text="Done!")
+            st.rerun()
+        except ValueError as e:
+            bar.empty()
+            st.toast(str(e), icon="⚠️")
 
 else:
     st.title("Review Split Files")
