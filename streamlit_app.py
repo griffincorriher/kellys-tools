@@ -5,15 +5,31 @@ import zipfile
 import re
 from datetime import datetime
 import streamlit_shadcn_ui as ui
+import pymupdf
+import pytesseract
+from PIL import Image
 
 # --- STUDENT NAME EXTRACTION ---
+
 def get_student_name(pdf_bytes):
-    reader = PdfReader(io.BytesIO(pdf_bytes))
-    first_page_text = reader.pages[0].extract_text()
-    lines = [line.strip() for line in first_page_text.split('\n') if line.strip()]
-    name = lines[0] if lines else "Unknown_Student"
-    name = re.sub(r'[<>:"/\\|?*]', '', name)
-    return name.replace(" ", "_")
+    doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+    page = doc[0]
+
+    # Crop to the black header bar (left portion only, avoiding Grade/ID on right)
+    # Rect(x0, y0, x1, y1) in points — page is 612x792
+    clip = pymupdf.Rect(0, 80, 340, 122)
+    mat = pymupdf.Matrix(4, 4)  # 4x zoom for better OCR accuracy
+    pix = page.get_pixmap(matrix=mat, clip=clip)
+
+    img = Image.open(io.BytesIO(pix.tobytes("png")))
+    text = pytesseract.image_to_string(img, config='--psm 7').strip()
+
+    doc.close()
+
+    # Clean up OCR artifacts (leading dashes, spaces, etc.)
+    name = re.sub(r'^[\s\-–—]+', '', text)         # strip leading dashes/spaces
+    name = re.sub(r'[<>:"/\\|?*]', '', name)        # strip filename-unsafe chars
+    return name.replace(" ", "_") if name else "Unknown_Student"
 
 # --- SPLIT LOGIC ---
 def split_and_merge(pdf_bytes, num_titles, pages_per_student, break_pages_check):

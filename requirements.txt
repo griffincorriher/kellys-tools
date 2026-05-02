@@ -3,3 +3,5 @@ streamlit-shadcn-ui
 pypdf
 pdf2image
 Pillow
+pymupdf
+pytesseract
